@@ -1,132 +1,128 @@
 # AHD Alert Bot — Discord App
 
-A Discord bot that lets any player subscribe to A House Divided alerts and receive DMs when in-game events happen.
+A Discord bot that allows **A House Divided** players to subscribe to in-game alerts and receive Discord DMs when important events occur.
+
+---
+
+## Getting Started
+
+1. Invite the bot to your Discord server.
+2. Use `/subscribe` to create alerts for events you want to follow.
+3. Wait for matching events to occur and receive a private Discord DM.
+
+You can create as many alerts as you would like and customize them using countries and keywords.
+
+---
 
 ## Commands
 
-| Command | Description | Example |
-|---|---|---|
-| `/subscribe` | Add an alert | `/subscribe alert_type:elections country:US` |
-| `/unsubscribe` | Remove an alert | `/unsubscribe alert_type:elections` |
-| `/myalerts` | See your subscriptions | `/myalerts` |
-| `/ahd` | Bot info & help | `/ahd` |
+| Command        | Description                                              |
+| -------------- | -------------------------------------------------------- |
+| `/subscribe`   | Create a new alert subscription                          |
+| `/unsubscribe` | Remove an alert subscription                             |
+| `/myalerts`    | View all of your active subscriptions                    |
+| `/ahd`         | Display information about the bot and available commands |
 
-## Alert types
+---
 
-| Type | Description | Filters |
-|---|---|---|
-| `elections` | Election opens, closes, or goes upcoming | `country` |
-| `legislation` | Bills pass or fail | `country`, `keyword` (bill title) |
-| `market` | Stock price moves ≥5% | `keyword` (corporation name) |
-| `news` | New news posts | `country`, `keyword` |
-| `characters` | Favorability or PI changes | `keyword` (character name) |
+## Alert Types
 
-## Examples
+### Elections (`elections`)
+
+Receive notifications when elections become upcoming, open, or close.
+
+**Available filters:**
+
+* `country` — Only receive alerts for a specific country.
+
+**Example:**
 
 ```
 /subscribe alert_type:elections country:US
+```
+
+---
+
+### Legislation (`legislation`)
+
+Receive notifications when bills pass or fail.
+
+**Available filters:**
+
+* `country` — Filter by the country the legislation belongs to.
+* `keyword` — Match words or phrases in the bill title.
+
+**Example:**
+
+```
 /subscribe alert_type:legislation country:GB keyword:healthcare
+```
+
+---
+
+### Market (`market`)
+
+Receive notifications when a corporation's stock price changes by 5% or more.
+
+**Available filters:**
+
+* `keyword` — Match a corporation name.
+
+**Example:**
+
+```
 /subscribe alert_type:market keyword:Acme Corp
-/subscribe alert_type:news keyword:scandal
+```
+
+---
+
+### News (`news`)
+
+Receive notifications when new news articles are posted.
+
+**Available filters:**
+
+* `country` — Only receive news from a specific country.
+* `keyword` — Match words or phrases in the news title.
+
+**Example:**
+
+```
+/subscribe alert_type:news country:US keyword:election
+```
+
+---
+
+### Characters (`characters`)
+
+Receive notifications when a character's favorability or political influence changes.
+
+**Available filters:**
+
+* `keyword` — Match a character's name.
+
+**Example:**
+
+```
 /subscribe alert_type:characters keyword:John Smith
 ```
 
 ---
 
-## Setup
+## Managing Your Alerts
 
-### 1. Create a Discord application
+Use `/myalerts` at any time to see your current subscriptions.
 
-1. Go to https://discord.com/developers/applications
-2. Click **New Application** → give it a name
-3. Go to **Bot** → **Add Bot**
-4. Under **Privileged Gateway Intents**, enable nothing (bot doesn't need them)
-5. Copy the **Token** — this is your `DISCORD_BOT_TOKEN`
-6. Go to **OAuth2 → URL Generator**:
-   - Scopes: `bot`, `applications.commands`
-   - Bot permissions: `Send Messages` (that's all it needs)
-   - Copy the generated URL and open it to add the bot to your server
+To remove an alert, use `/unsubscribe` with the same alert type you used when creating it.
 
-### 2. Get your AHD API key
+Example:
 
-Go to Settings → API Keys in A House Divided and create a public key.
-
-### 3. Run with Docker (recommended)
-
-```bash
-# Clone the repo
-git clone https://github.com/yourname/ahd-alert-bot
-cd ahd-alert-bot
-
-# Set environment variables
-export DISCORD_BOT_TOKEN="your_bot_token_here"
-export AHD_API_KEY="ahd_pub_your_key_here"
-
-# Build and run
-docker build -t ahd-bot .
-docker run -d \
-  --name ahd-bot \
-  --restart unless-stopped \
-  -e DISCORD_BOT_TOKEN="$DISCORD_BOT_TOKEN" \
-  -e AHD_API_KEY="$AHD_API_KEY" \
-  -v $(pwd)/data:/app/data \
-  ahd-bot
 ```
-
-### 4. Run directly with Python
-
-```bash
-pip install -r requirements.txt
-
-export DISCORD_BOT_TOKEN="your_bot_token_here"
-export AHD_API_KEY="ahd_pub_your_key_here"
-
-python src/bot.py
+/unsubscribe alert_type:elections
 ```
 
 ---
 
-## Hosting
+## Disclaimer
 
-| Option | Cost | Notes |
-|---|---|---|
-| **Railway** | Free tier available | Easiest — connect GitHub repo, set env vars, done |
-| **Fly.io** | Free tier available | Docker-native, great for small bots |
-| **DigitalOcean** | ~$4/month | Simple Droplet + Docker |
-| **Raspberry Pi** | One-time hardware | Great if you have one sitting around |
-| **VPS (Hetzner)** | ~€3/month | Cheapest paid option |
-
-### Railway (easiest)
-
-1. Push this repo to GitHub
-2. Go to railway.app → New Project → Deploy from GitHub repo
-3. Add environment variables: `DISCORD_BOT_TOKEN`, `AHD_API_KEY`
-4. Railway auto-detects the Dockerfile and deploys
-
----
-
-## Architecture
-
-```
-Discord User
-    │
-    │  /subscribe elections country:US
-    ▼
-Discord Bot (discord.py)
-    │  saves to SQLite
-    ▼
-subscriptions.db
-    ▲
-    │  reads subscribers
-Background Poller (runs every 60s)
-    │
-    │  polls
-    ▼
-AHD Public API
-    │
-    │  new event found → match subscribers → DM each user
-    ▼
-Discord DM ✉️
-```
-
-State is stored in `data/subscriptions.db` (SQLite). Mount this as a volume if using Docker so it persists across restarts.
+This is an independent community project and is not affiliated with or endorsed by the developers of **A House Divided**.
