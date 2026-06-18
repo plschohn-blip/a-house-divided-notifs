@@ -34,11 +34,17 @@ Receive notifications when elections become upcoming, open, or close.
 **Available filters:**
 
 * `country` — Only receive alerts for a specific country.
+* `status` — Only receive alerts for a specific election phase: `upcoming`, `open`, or `closed`.
+* `keyword` — Match an election type, state, or candidate name.
 
-**Example:**
+**Examples:**
 
 ```
-/subscribe alert_type:elections country:US
+/subscribe alert_type:elections country:US status:upcoming
+```
+
+```
+/subscribe alert_type:elections country:GB keyword:Prime Minister
 ```
 
 ---
@@ -62,13 +68,18 @@ Receive notifications when bills pass or fail.
 
 ### Market (`market`)
 
-Receive notifications when a corporation's stock price changes by 5% or more.
+Receive notifications when a corporation's stock price moves significantly.
 
 **Available filters:**
 
 * `keyword` — Match a corporation name.
+* `threshold` — Minimum price movement required to trigger the alert (default is 5%).
 
-**Example:**
+**Examples:**
+
+```
+/subscribe alert_type:market keyword:Acme Corp threshold:0.1
+```
 
 ```
 /subscribe alert_type:market keyword:Acme Corp
@@ -100,8 +111,13 @@ Receive notifications when a character's favorability or political influence cha
 **Available filters:**
 
 * `keyword` — Match a character's name.
+* `threshold` — Minimum combined favorability or influence change required to trigger the alert.
 
-**Example:**
+**Examples:**
+
+```
+/subscribe alert_type:characters keyword:John Smith threshold:10
+```
 
 ```
 /subscribe alert_type:characters keyword:John Smith
@@ -113,12 +129,16 @@ Receive notifications when a character's favorability or political influence cha
 
 Use `/myalerts` at any time to see your current subscriptions.
 
-To remove an alert, use `/unsubscribe` with the same alert type you used when creating it.
+To remove an alert, use `/unsubscribe` with the same alert type and optional filters you used when creating it.
 
-Example:
+Examples:
 
 ```
-/unsubscribe alert_type:elections
+/unsubscribe alert_type:elections country:US status:upcoming
+```
+
+```
+/unsubscribe alert_type:market keyword:Acme Corp threshold:0.1
 ```
 
 ---

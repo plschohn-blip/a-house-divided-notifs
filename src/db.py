@@ -28,8 +28,10 @@ class Database:
                     alert_type  TEXT NOT NULL,
                     country     TEXT NOT NULL DEFAULT '',
                     keyword     TEXT NOT NULL DEFAULT '',
+                    status      TEXT NOT NULL DEFAULT '',
+                    threshold   REAL NOT NULL DEFAULT 0,
                     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, alert_type, country, keyword)
+                    UNIQUE(user_id, alert_type, country, keyword, status, threshold)
                 );
 
                 CREATE TABLE IF NOT EXISTS poller_state (
@@ -37,22 +39,62 @@ class Database:
                     value   TEXT NOT NULL
                 );
             """)
+            self._ensure_subscription_columns(conn)
+
+    def _ensure_subscription_columns(self, conn):
+        rows = conn.execute("PRAGMA table_info(subscriptions)").fetchall()
+        columns = {row[1] for row in rows}
+        if "status" not in columns:
+            conn.execute("ALTER TABLE subscriptions ADD COLUMN status TEXT NOT NULL DEFAULT ''")
+        if "threshold" not in columns:
+            conn.execute("ALTER TABLE subscriptions ADD COLUMN threshold REAL NOT NULL DEFAULT 0")
 
     # ── Subscriptions ─────────────────────────────────────────────────────────
 
-    def add_subscription(self, user_id: int, alert_type: str, country: str, keyword: str):
+    def add_subscription(
+        self,
+        user_id: int,
+        alert_type: str,
+        country: str,
+        keyword: str,
+        status: str = "",
+        threshold: float = 0,
+    ):
         with self._conn() as conn:
             conn.execute("""
-                INSERT OR IGNORE INTO subscriptions (user_id, alert_type, country, keyword)
-                VALUES (?, ?, ?, ?)
-            """, (user_id, alert_type, country, keyword))
+                INSERT OR IGNORE INTO subscriptions \
+                    (user_id, alert_type, country, keyword, status, threshold)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_id, alert_type, country, keyword, status, threshold))
 
-    def remove_subscription(self, user_id: int, alert_type: str):
+    def remove_subscription(
+        self,
+        user_id: int,
+        alert_type: str,
+        country: str = "",
+        keyword: str = "",
+        status: str = "",
+        threshold: float | None = None,
+    ):
+        conditions = ["user_id = ?", "alert_type = ?"]
+        params = [user_id, alert_type]
+
+        if country:
+            conditions.append("country = ?")
+            params.append(country)
+        if keyword:
+            conditions.append("keyword = ?")
+            params.append(keyword)
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        if threshold is not None:
+            conditions.append("threshold = ?")
+            params.append(threshold)
+
+        query = "DELETE FROM subscriptions WHERE " + " AND ".join(conditions)
         with self._conn() as conn:
-            conn.execute(
-                "DELETE FROM subscriptions WHERE user_id = ? AND alert_type = ?",
-                (user_id, alert_type),
-            )
+            conn.execute(query, params)
 
     def remove_all_subscriptions(self, user_id: int):
         with self._conn() as conn:

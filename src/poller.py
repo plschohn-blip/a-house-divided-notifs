@@ -47,6 +47,53 @@ class Poller:
         self.bot = bot
         self.api = AhdApi()
 
+    def _matches_election(self, sub: dict, election: dict, country: str) -> bool:
+        if sub["country"] and sub["country"] != country:
+            return False
+        if sub["status"] and sub["status"] != election.get("status", ""):
+            return False
+        if sub["keyword"]:
+            keyword = sub["keyword"]
+            title = (election.get("electionType", "") + " " + election.get("state", "") + " " + country).lower()
+            candidates = " ".join(c.get("characterName", "") for c in election.get("candidates", []))
+            if keyword not in title and keyword not in candidates.lower():
+                return False
+        return True
+
+    def _matches_legislation(self, sub: dict, bill: dict, country: str) -> bool:
+        if sub["country"] and sub["country"] != country:
+            return False
+        if sub["keyword"] and sub["keyword"] not in bill.get("title", "").lower():
+            return False
+        return True
+
+    def _matches_market(self, sub: dict, corp: dict, change: float) -> bool:
+        if sub["keyword"] and sub["keyword"] not in corp.get("name", "").lower():
+            return False
+        threshold = sub.get("threshold", 0)
+        minimum = threshold if threshold > 0 else 0.05
+        if abs(change) < minimum:
+            return False
+        return True
+
+    def _matches_news(self, sub: dict, post: dict) -> bool:
+        country = post.get("countryId") or ""
+        if sub["country"] and sub["country"] != country:
+            return False
+        if sub["keyword"]:
+            text = (post.get("title", "") + " " + post.get("content", "")).lower()
+            if sub["keyword"] not in text:
+                return False
+        return True
+
+    def _matches_character(self, sub: dict, char_name: str, fav_change: float, pi_change: float) -> bool:
+        if sub["keyword"] and sub["keyword"] not in char_name.lower():
+            return False
+        threshold = sub.get("threshold", 0)
+        if threshold and max(abs(fav_change), abs(pi_change)) < threshold:
+            return False
+        return True
+
     async def run(self):
         await self._check_elections()
         await self._check_legislation()
@@ -101,9 +148,8 @@ class Poller:
 
                 # DM matching subscribers
                 for sub in subs:
-                    if sub["country"] and sub["country"] != country:
-                        continue
-                    await _dm(self.bot, sub["user_id"], embed)
+                    if self._matches_election(sub, election, country):
+                        await _dm(self.bot, sub["user_id"], embed)
 
         self.db.set_state("elections_seen", seen)
 
@@ -151,11 +197,8 @@ class Poller:
                     )
 
                     for sub in subs:
-                        if sub["country"] and sub["country"] != country:
-                            continue
-                        if sub["keyword"] and sub["keyword"] not in title.lower():
-                            continue
-                        await _dm(self.bot, sub["user_id"], embed)
+                        if self._matches_legislation(sub, bill, country):
+                            await _dm(self.bot, sub["user_id"], embed)
 
         self.db.set_state("legislation_seen", seen)
 
@@ -189,7 +232,9 @@ class Poller:
                 continue
 
             change = (price - prev) / prev if prev else 0
-            if abs(change) < 0.05:  # 5% threshold
+
+            matching_subs = [sub for sub in subs if self._matches_market(sub, corp, change)]
+            if not matching_subs:
                 continue
 
             direction = "📈" if change > 0 else "📉"
@@ -204,10 +249,7 @@ class Poller:
                 ],
             )
 
-            for sub in subs:
-                # Keyword matches corp name (partial, case-insensitive)
-                if sub["keyword"] and sub["keyword"] not in name.lower():
-                    continue
+            for sub in matching_subs:
                 await _dm(self.bot, sub["user_id"], embed)
 
         self.db.set_state("market_prices", prev_prices)
@@ -250,11 +292,8 @@ class Poller:
             )
 
             for sub in subs:
-                if sub["country"] and sub["country"] != country:
-                    continue
-                if sub["keyword"] and sub["keyword"] not in (title + " " + content).lower():
-                    continue
-                await _dm(self.bot, sub["user_id"], embed)
+                if self._matches_news(sub, post):
+                    await _dm(self.bot, sub["user_id"], embed)
 
         self.db.set_state("news_seen", list(seen))
 
@@ -292,13 +331,19 @@ class Poller:
             if prev_fav is None:
                 continue
 
+            fav_change = fav - prev_fav
+            pi_change = pi - prev_pi
+            matching_subs = [sub for sub in subs if self._matches_character(sub, char_name, fav_change, pi_change)]
+            if not matching_subs:
+                continue
+
             fields = []
-            if abs(fav - prev_fav) >= 3:
-                arrow = "⬆️" if fav > prev_fav else "⬇️"
-                fields.append({"name": f"{arrow} Favorability", "value": f"{prev_fav:.1f} → {fav:.1f} ({fav - prev_fav:+.1f})", "inline": True})
-            if abs(pi - prev_pi) >= 5:
-                arrow = "⬆️" if pi > prev_pi else "⬇️"
-                fields.append({"name": f"{arrow} Political Influence", "value": f"{prev_pi:.0f} → {pi:.0f} ({pi - prev_pi:+.0f})", "inline": True})
+            if fav_change != 0:
+                arrow = "⬆️" if fav_change > 0 else "⬇️"
+                fields.append({"name": f"{arrow} Favorability", "value": f"{prev_fav:.1f} → {fav:.1f} ({fav_change:+.1f})", "inline": True})
+            if pi_change != 0:
+                arrow = "⬆️" if pi_change > 0 else "⬇️"
+                fields.append({"name": f"{arrow} Political Influence", "value": f"{prev_pi:.0f} → {pi:.0f} ({pi_change:+.0f})", "inline": True})
 
             if not fields:
                 continue
@@ -311,9 +356,7 @@ class Poller:
                 url=f"https://www.ahousedividedgame.com{char.get('profileUrl', '')}",
             )
 
-            for sub in subs:
-                if sub["keyword"] and sub["keyword"] not in char_name.lower():
-                    continue
+            for sub in matching_subs:
                 await _dm(self.bot, sub["user_id"], embed)
 
         self.db.set_state("char_stats", prev_stats)

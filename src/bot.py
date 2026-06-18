@@ -41,27 +41,61 @@ async def on_ready():
 @discord.app_commands.describe(
     alert_type="What to watch: elections | legislation | market | news | characters",
     country="Country code, e.g. US, GB, DE (leave blank for all)",
-    keyword="Optional keyword filter for news/legislation",
+    keyword="Optional keyword filter for elections/corps/characters/news/legislation",
+    status="Optional election status filter: upcoming | open | closed",
+    threshold="Optional minimum change threshold for market or character alerts",
 )
 async def subscribe(
     interaction: discord.Interaction,
     alert_type: str,
     country: str = "",
     keyword: str = "",
+    status: str = "",
+    threshold: float = 0,
 ):
     valid = {"elections", "legislation", "market", "news", "characters"}
-    if alert_type.lower() not in valid:
+    alert_type = alert_type.lower()
+    if alert_type not in valid:
         await interaction.response.send_message(
             f"❌ Unknown alert type `{alert_type}`. Choose from: {', '.join(sorted(valid))}",
             ephemeral=True,
         )
         return
 
+    status = status.lower().strip()
+    if status and alert_type != "elections":
+        await interaction.response.send_message(
+            "❌ `status` is only valid for `elections` subscriptions.",
+            ephemeral=True,
+        )
+        return
+    if status and status not in {"upcoming", "open", "closed"}:
+        await interaction.response.send_message(
+            "❌ Election status must be one of: upcoming, open, closed.",
+            ephemeral=True,
+        )
+        return
+
+    if threshold < 0:
+        await interaction.response.send_message(
+            "❌ Threshold must be zero or a positive number.",
+            ephemeral=True,
+        )
+        return
+    if threshold and alert_type not in {"market", "characters"}:
+        await interaction.response.send_message(
+            "❌ Threshold is only valid for `market` and `characters` subscriptions.",
+            ephemeral=True,
+        )
+        return
+
     db.add_subscription(
         user_id=interaction.user.id,
-        alert_type=alert_type.lower(),
+        alert_type=alert_type,
         country=country.upper() if country else "",
         keyword=keyword.lower() if keyword else "",
+        status=status,
+        threshold=threshold,
     )
 
     parts = [f"**{alert_type}**"]
@@ -69,6 +103,10 @@ async def subscribe(
         parts.append(f"country: **{country.upper()}**")
     if keyword:
         parts.append(f"keyword: **{keyword}**")
+    if status:
+        parts.append(f"status: **{status}**")
+    if threshold:
+        parts.append(f"threshold: **{threshold}**")
 
     await interaction.response.send_message(
         f"✅ Subscribed to {' | '.join(parts)}. You'll receive DMs when matching events occur.",
@@ -79,16 +117,67 @@ async def subscribe(
 @bot.tree.command(name="unsubscribe", description="Remove an A House Divided alert subscription")
 @discord.app_commands.describe(
     alert_type="Alert type to remove: elections | legislation | market | news | characters | all",
+    country="Country code, e.g. US, GB, DE",
+    keyword="Optional keyword filter to remove a matching subscription",
+    status="Optional election status to remove a specific elections subscription",
+    threshold="Optional threshold to remove a specific market or characters subscription",
 )
-async def unsubscribe(interaction: discord.Interaction, alert_type: str):
-    if alert_type.lower() == "all":
+async def unsubscribe(
+    interaction: discord.Interaction,
+    alert_type: str,
+    country: str = "",
+    keyword: str = "",
+    status: str = "",
+    threshold: float | None = None,
+):
+    alert_type = alert_type.lower()
+    if alert_type == "all":
         db.remove_all_subscriptions(interaction.user.id)
         await interaction.response.send_message("✅ Removed all your AHD subscriptions.", ephemeral=True)
-    else:
-        db.remove_subscription(interaction.user.id, alert_type.lower())
+        return
+
+    valid = {"elections", "legislation", "market", "news", "characters"}
+    if alert_type not in valid:
         await interaction.response.send_message(
-            f"✅ Removed your **{alert_type}** subscription.", ephemeral=True
+            f"❌ Unknown alert type `{alert_type}`. Choose from: {', '.join(sorted(valid))}",
+            ephemeral=True,
         )
+        return
+
+    status = status.lower().strip()
+    if status and alert_type != "elections":
+        await interaction.response.send_message(
+            "❌ `status` is only valid for removing `elections` subscriptions.",
+            ephemeral=True,
+        )
+        return
+    if status and status not in {"upcoming", "open", "closed"}:
+        await interaction.response.send_message(
+            "❌ Election status must be one of: upcoming, open, closed.",
+            ephemeral=True,
+        )
+        return
+
+    if threshold is not None and alert_type not in {"market", "characters"}:
+        await interaction.response.send_message(
+            "❌ Threshold is only valid for removing `market` and `characters` subscriptions.",
+            ephemeral=True,
+        )
+        return
+
+    db.remove_subscription(
+        interaction.user.id,
+        alert_type,
+        country=country.upper() if country else "",
+        keyword=keyword.lower() if keyword else "",
+        status=status,
+        threshold=threshold,
+    )
+
+    await interaction.response.send_message(
+        f"✅ Removed matching **{alert_type}** subscription(s).",
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(name="myalerts", description="List your current AHD alert subscriptions")
@@ -107,6 +196,10 @@ async def myalerts(interaction: discord.Interaction):
             parts.append(f"country: {s['country']}")
         if s["keyword"]:
             parts.append(f"keyword: `{s['keyword']}`")
+        if s["status"]:
+            parts.append(f"status: {s['status']}")
+        if s["threshold"]:
+            parts.append(f"threshold: {s['threshold']}")
         lines.append("• " + " | ".join(parts))
 
     await interaction.response.send_message(
